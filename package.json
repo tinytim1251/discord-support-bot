@@ -1,0 +1,24 @@
+{
+  "name": "discord-support-bot",
+  "version": "1.0.0",
+  "description": "A Discord support bot for managing tickets",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "support",
+    "tickets"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "sqlite3": "^5.1.7"
+  }
+}
+
