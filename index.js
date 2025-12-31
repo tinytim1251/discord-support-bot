@@ -20,8 +20,10 @@ const client = new Client({
 // Initialize commands collection
 client.commands = new Collection();
 
-// Initialize tickets Map (in-memory storage)
-const tickets = new Map();
+// Store active conversations: Map<userId, agentId>
+const activeConversations = new Map();
+// Store conversation history: Map<userId, [{from, content, timestamp}]>
+const conversationHistory = new Map();
 
 // Load commands
 const commandsPath = path.join(__dirname, 'commands');
@@ -75,78 +77,86 @@ async function registerCommands() {
 // Event: Bot ready
 client.once(Events.ClientReady, async () => {
     console.log(`Ready! Logged in as ${client.user.tag}`);
-    console.log(`[DEBUG] Bot ID: ${client.user.id}`);
-    console.log(`[DEBUG] Intents: ${client.options.intents.bitfield}`);
-    console.log(`[DEBUG] Partials: ${client.options.partials}`);
-    console.log(`[DEBUG] Message event handler is registered`);
     await registerCommands();
 });
 
-// Event: Message create (for DMs AND debugging)
+// Event: Message create (for DMs)
 client.on(Events.MessageCreate, async message => {
-    // DEBUG: Log EVERY message received (before any filtering)
-    console.log(`[DEBUG] MessageCreate fired! Author: ${message.author?.tag || 'unknown'}, Bot: ${message.author?.bot}, Channel Type: ${message.channel?.type}, Guild: ${message.guild?.name || 'none'}`);
-    
     // Ignore messages from bots (including self)
-    if (message.author.bot) {
-        console.log(`[DEBUG] Ignoring bot message`);
-        return;
-    }
+    if (message.author.bot) return;
     
     // Only handle DMs (not server messages)
-    // Check both ways: no guild AND channel type is DM
     if (message.guild || message.channel.type !== ChannelType.DM) {
-        console.log(`[DEBUG] Not a DM, ignoring. Guild: ${!!message.guild}, ChannelType: ${message.channel.type}`);
         return; // Not a DM, ignore
     }
     
+    const userId = message.author.id;
+    const agentId = activeConversations.get(userId);
+    
+    // If user has an active conversation with an agent
+    if (agentId) {
+        // Forward message to agent
+        try {
+            const agent = await client.users.fetch(agentId);
+            const agentEmbed = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setAuthor({ 
+                    name: `${message.author.tag} (${message.author.id})`, 
+                    iconURL: message.author.displayAvatarURL() 
+                })
+                .setDescription(message.content || '(No text content)')
+                .setFooter({ text: 'Reply using: /reply <user_id> <message>' })
+                .setTimestamp();
+            
+            // Add attachments if any
+            if (message.attachments.size > 0) {
+                const attachmentUrls = message.attachments.map(att => att.url).join('\n');
+                agentEmbed.addFields({ name: 'Attachments', value: attachmentUrls });
+            }
+            
+            await agent.send({ embeds: [agentEmbed] });
+            
+            // Store in history
+            if (!conversationHistory.has(userId)) {
+                conversationHistory.set(userId, []);
+            }
+            conversationHistory.get(userId).push({
+                from: 'user',
+                content: message.content,
+                timestamp: new Date()
+            });
+            
+            console.log(`[DM] Forwarded message from ${message.author.tag} to agent ${agent.tag}`);
+        } catch (error) {
+            console.error('[DM] Error forwarding to agent:', error);
+            await message.reply('❌ Error forwarding your message to the support agent. Please try again.');
+        }
+        return;
+    }
+    
+    // First message from user - show "Speak to Agent" option
     console.log(`[DM] Received DM from ${message.author.tag} (${message.author.id}): ${message.content || '(no content)'}`);
     
     try {
-        // Create an embed with options
         const embed = new EmbedBuilder()
             .setColor(0x5865F2)
             .setTitle('👋 Hello! Welcome to Support')
-            .setDescription('I\'m here to help! Choose an option below:')
-            .addFields(
-                { name: '📝 Create Ticket', value: 'Open a new support ticket', inline: true },
-                { name: '👤 Speak to Agent', value: 'Get connected with a human agent', inline: true },
-                { name: '❓ Help', value: 'View available commands and information', inline: true }
-            )
+            .setDescription('Click the button below to connect with a support agent. All conversations happen here in DMs.')
             .setFooter({ text: 'Support Bot' })
             .setTimestamp();
         
-        // Create buttons
         const row = new ActionRowBuilder()
             .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('dm_create_ticket')
-                    .setLabel('Create Ticket')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('📝'),
                 new ButtonBuilder()
                     .setCustomId('dm_speak_agent')
                     .setLabel('Speak to Agent')
                     .setStyle(ButtonStyle.Success)
-                    .setEmoji('👤'),
-                new ButtonBuilder()
-                    .setCustomId('dm_help')
-                    .setLabel('Help')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('❓')
+                    .setEmoji('👤')
             );
         
         await message.reply({ embeds: [embed], components: [row] });
-        console.log(`[DM] Successfully replied to ${message.author.tag}`);
     } catch (error) {
         console.error('[DM] Error responding to DM:', error.message);
-        // Try sending a regular message instead of reply
-        try {
-            await message.channel.send('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me.');
-            console.log(`[DM] Sent message via channel.send instead`);
-        } catch (error2) {
-            console.error('[DM] Both reply and send failed:', error2.message);
-        }
     }
 });
 
@@ -154,39 +164,34 @@ client.on(Events.MessageCreate, async message => {
 client.on(Events.InteractionCreate, async interaction => {
     // Handle button interactions (from DMs)
     if (interaction.isButton()) {
-        const customId = interaction.customId;
-        
-        if (customId === 'dm_create_ticket') {
-            await interaction.reply({
-                content: '📝 To create a ticket, please use the `/` command in a server where I\'m present. Type `/` and look for ticket-related commands!',
-                ephemeral: true
-            });
-            return;
-        }
-        
-        if (customId === 'dm_speak_agent') {
-            await interaction.reply({
-                content: '👤 To speak with a human agent, please join our support server and mention @Support or use the `/` commands. Our agents are ready to help!',
-                ephemeral: true
-            });
-            return;
-        }
-        
-        if (customId === 'dm_help') {
-            const helpEmbed = new EmbedBuilder()
-                .setColor(0x5865F2)
-                .setTitle('❓ Help - Available Commands')
-                .setDescription('Here are some commands you can use in a server:')
-                .addFields(
-                    { name: '/ping', value: 'Check if the bot is online', inline: false },
-                    { name: '/stats', value: 'View ticket statistics (Support Agents)', inline: false },
-                    { name: '/list', value: 'List all tickets (Support Agents)', inline: false },
-                    { name: '/view', value: 'View a specific ticket (Support Agents)', inline: false }
-                )
-                .setFooter({ text: 'Use / in a server to see all available commands' })
-                .setTimestamp();
+        if (interaction.customId === 'dm_speak_agent') {
+            const userId = interaction.user.id;
             
-            await interaction.reply({ embeds: [helpEmbed], ephemeral: true });
+            // Check if already in conversation
+            if (activeConversations.has(userId)) {
+                await interaction.reply({
+                    content: '✅ You are already connected to a support agent! Just send your message here.',
+                    ephemeral: true
+                });
+                return;
+            }
+            
+            // For now, we'll need to assign an agent manually
+            // You can modify this to auto-assign from available agents
+            await interaction.reply({
+                content: '👤 Your request has been sent! An agent will be with you shortly. Please wait for an agent to connect...\n\n**Note:** Agents will be notified and can respond to you here in DMs.',
+                ephemeral: true
+            });
+            
+            // Store as waiting (no agent assigned yet)
+            // In a real system, you'd have a queue and assign agents
+            activeConversations.set(userId, null); // null means waiting for agent
+            
+            console.log(`[DM] User ${interaction.user.tag} requested agent`);
+            
+            // TODO: Notify available agents in a server channel or via DM
+            // For now, agents can use /claim <user_id> to claim the conversation
+            
             return;
         }
     }
@@ -202,8 +207,8 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     
     try {
-        // Execute command with tickets Map
-        await command.execute(interaction, tickets);
+        // Execute command - pass activeConversations for agent commands
+        await command.execute(interaction, { activeConversations, conversationHistory });
     } catch (error) {
         console.error(`Error executing ${interaction.commandName}:`, error);
         
