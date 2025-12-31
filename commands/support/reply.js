@@ -4,7 +4,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('reply')
         .setDescription('Reply to a user in DM (Support Agents only)')
-        .addStringOption(option =>
+        .addIntegerOption(option =>
             option.setName('ticket_id')
                 .setDescription('The ticket ID to reply to')
                 .setRequired(true))
@@ -60,11 +60,11 @@ module.exports = {
                 return respond('❌ You do not have permission to reply to users. You need a support agent role.');
             }
             
-            const ticketIdInput = interaction.options.getString('ticket_id');
+            const ticketIdInput = interaction.options.getInteger('ticket_id');
             const message = interaction.options.getString('message');
             
-            // Normalize ticket ID (handle both string and number inputs)
-            const ticketId = ticketIdInput.trim();
+            // Normalize ticket ID (convert to string for map lookup)
+            const ticketId = ticketIdInput.toString();
             
             // Look up ticket by ticket ID (try both string and number)
             let ticketData = tickets.get(ticketId);
