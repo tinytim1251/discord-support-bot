@@ -150,6 +150,13 @@ async function registerCommands() {
         );
         
         console.log(`Successfully reloaded ${data.length} application (/) commands.`);
+        
+        // Log reply command details for debugging
+        const replyCmd = commands.find(cmd => cmd.name === 'reply');
+        if (replyCmd) {
+            const ticketIdOption = replyCmd.options?.find(opt => opt.name === 'ticket_id');
+            console.log(`[DEBUG] Reply command ticket_id option type: ${ticketIdOption?.type} (3=INTEGER, 4=STRING)`);
+        }
     } catch (error) {
         console.error('Error registering commands:', error);
     }
