@@ -13,7 +13,12 @@ module.exports = {
                 .setDescription('Your reply message')
                 .setRequired(true)),
     
-    async execute(interaction, { activeTickets, ticketHistory, tickets }) {
+    async execute(interaction, context) {
+        // Extract context properties with fallbacks
+        const activeTickets = context?.activeTickets || new Map();
+        const ticketHistory = context?.ticketHistory || new Map();
+        const tickets = context?.tickets || new Map();
+        
         const respond = async (content, embed = null) => {
             try {
                 if (interaction.deferred || interaction.replied) {
@@ -132,13 +137,18 @@ module.exports = {
             
         } catch (error) {
             console.error('Error replying to user:', error);
+            console.error('Error stack:', error.stack);
+            console.error('Ticket ID provided:', ticketId);
+            console.error('Tickets map size:', tickets.size);
+            console.error('Tickets map keys:', Array.from(tickets.keys()));
+            
             if (error.code === 50007) {
                 return respond('❌ Cannot send DM to this user. They may have DMs disabled.');
             }
             if (error.code === 10013) {
                 return respond(`❌ User not found. The ticket may be invalid.`);
             }
-            return respond(`❌ Error: ${error.message}`);
+            return respond(`❌ Error: ${error.message}\n\nDebug: Ticket ID "${ticketId}" not found in tickets map. Available tickets: ${Array.from(tickets.keys()).join(', ') || 'none'}`);
         }
     }
 };

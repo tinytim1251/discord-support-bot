@@ -9,7 +9,11 @@ module.exports = {
                 .setDescription('The user ID to claim')
                 .setRequired(true)),
     
-    async execute(interaction, { activeTickets, ticketHistory, tickets }) {
+    async execute(interaction, context) {
+        // Extract context properties with fallbacks
+        const activeTickets = context?.activeTickets || new Map();
+        const ticketHistory = context?.ticketHistory || new Map();
+        const tickets = context?.tickets || new Map();
         const respond = async (content, embed = null) => {
             try {
                 if (interaction.deferred || interaction.replied) {
