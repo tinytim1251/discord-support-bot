@@ -25,6 +25,74 @@ const activeConversations = new Map();
 // Store conversation history: Map<userId, [{from, content, timestamp}]>
 const conversationHistory = new Map();
 
+// Function to notify agents in server channel
+async function notifyAgents(client, user) {
+    // Try to find support channel - check client property first, then try to find channel named "support" or "support-requests"
+    let channel = null;
+    
+    if (client.supportChannelId) {
+        try {
+            channel = await client.channels.fetch(client.supportChannelId);
+        } catch (error) {
+            console.error('[NOTIFY] Error fetching support channel:', error);
+        }
+    }
+    
+    // If no channel set, try to find one named "support" or "support-requests"
+    if (!channel) {
+        for (const guild of client.guilds.cache.values()) {
+            const supportChannel = guild.channels.cache.find(
+                ch => ch.type === ChannelType.GuildText && 
+                (ch.name.toLowerCase().includes('support') || ch.name.toLowerCase().includes('ticket'))
+            );
+            if (supportChannel) {
+                channel = supportChannel;
+                client.supportChannelId = channel.id; // Cache it
+                break;
+            }
+        }
+    }
+    
+    if (!channel) {
+        console.log('[NOTIFY] No support channel found. Use /setchannel to set one.');
+        return;
+    }
+    
+    try {
+        const notificationEmbed = new EmbedBuilder()
+            .setColor(0xFF6B6B)
+            .setTitle('🔔 New Support Request')
+            .setDescription(`A user is requesting to speak with a support agent!`)
+            .addFields(
+                { name: '👤 User', value: `${user.tag} (${user.id})`, inline: true },
+                { name: '⏰ Time', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+                { name: '📝 Action', value: `Use \`/claim ${user.id}\` to claim this conversation`, inline: false }
+            )
+            .setThumbnail(user.displayAvatarURL())
+            .setFooter({ text: 'Support Bot' })
+            .setTimestamp();
+        
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`claim_${user.id}`)
+                    .setLabel('Claim Conversation')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('👤')
+            );
+        
+        await channel.send({ 
+            content: '@here New support request!', 
+            embeds: [notificationEmbed], 
+            components: [row] 
+        });
+        
+        console.log(`[NOTIFY] Sent notification to ${channel.name} in ${channel.guild.name}`);
+    } catch (error) {
+        console.error('[NOTIFY] Error sending notification:', error);
+    }
+}
+
 // Load commands
 const commandsPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(commandsPath);
@@ -162,8 +230,63 @@ client.on(Events.MessageCreate, async message => {
 
 // Event: Interaction create
 client.on(Events.InteractionCreate, async interaction => {
-    // Handle button interactions (from DMs)
+    // Handle button interactions (from DMs and server)
     if (interaction.isButton()) {
+        // Handle claim button from server notifications
+        if (interaction.customId.startsWith('claim_')) {
+            const userId = interaction.customId.replace('claim_', '');
+            
+            // Check if user has support agent role
+            if (!interaction.member) {
+                return await interaction.reply({ content: '❌ This button must be used in a server.', ephemeral: true });
+            }
+            
+            const member = interaction.member;
+            const hasSupportRole = member.roles.cache.some(role => 
+                role.name.toLowerCase().includes('support') || 
+                role.name.toLowerCase().includes('agent') ||
+                role.name.toLowerCase().includes('staff') ||
+                member.permissions.has(PermissionFlagsBits.Administrator)
+            );
+            
+            if (!hasSupportRole) {
+                return await interaction.reply({ content: '❌ You do not have permission to claim conversations. You need a support agent role.', ephemeral: true });
+            }
+            
+            // Claim the conversation (same logic as /claim command)
+            try {
+                const user = await interaction.client.users.fetch(userId);
+                const currentAgent = activeConversations.get(userId);
+                
+                if (currentAgent && currentAgent !== null && currentAgent !== interaction.user.id) {
+                    const agent = await interaction.client.users.fetch(currentAgent);
+                    return await interaction.reply({ content: `❌ This conversation is already claimed by ${agent.tag}.`, ephemeral: true });
+                }
+                
+                activeConversations.set(userId, interaction.user.id);
+                
+                // Notify the user
+                const userEmbed = new EmbedBuilder()
+                    .setColor(0x00FF00)
+                    .setTitle('✅ Support Agent Connected')
+                    .setDescription(`A support agent (${interaction.user.tag}) is now here to help you! You can start chatting.`)
+                    .setFooter({ text: 'Support Team' })
+                    .setTimestamp();
+                
+                await user.send({ embeds: [userEmbed] });
+                
+                await interaction.reply({ 
+                    content: `✅ You have claimed the conversation with ${user.tag}! Use \`/reply ${userId} <message>\` to respond.`, 
+                    ephemeral: true 
+                });
+                
+            } catch (error) {
+                console.error('Error claiming via button:', error);
+                await interaction.reply({ content: `❌ Error: ${error.message}`, ephemeral: true });
+            }
+            return;
+        }
+        
         if (interaction.customId === 'dm_speak_agent') {
             const userId = interaction.user.id;
             
@@ -189,8 +312,8 @@ client.on(Events.InteractionCreate, async interaction => {
             
             console.log(`[DM] User ${interaction.user.tag} requested agent`);
             
-            // TODO: Notify available agents in a server channel or via DM
-            // For now, agents can use /claim <user_id> to claim the conversation
+            // Notify agents in the support channel
+            await notifyAgents(interaction.client, interaction.user);
             
             return;
         }
