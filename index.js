@@ -234,33 +234,36 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isButton()) {
         // Handle claim button from server notifications
         if (interaction.customId.startsWith('claim_')) {
-            const userId = interaction.customId.replace('claim_', '');
-            
-            // Check if user has support agent role
-            if (!interaction.member) {
-                return await interaction.reply({ content: '❌ This button must be used in a server.', ephemeral: true });
-            }
-            
-            const member = interaction.member;
-            const hasSupportRole = member.roles.cache.some(role => 
-                role.name.toLowerCase().includes('support') || 
-                role.name.toLowerCase().includes('agent') ||
-                role.name.toLowerCase().includes('staff') ||
-                member.permissions.has(PermissionFlagsBits.Administrator)
-            );
-            
-            if (!hasSupportRole) {
-                return await interaction.reply({ content: '❌ You do not have permission to claim conversations. You need a support agent role.', ephemeral: true });
-            }
-            
-            // Claim the conversation (same logic as /claim command)
             try {
+                // Defer reply immediately to prevent timeout
+                await interaction.deferReply({ ephemeral: true });
+                
+                const userId = interaction.customId.replace('claim_', '');
+                
+                // Check if user has support agent role
+                if (!interaction.member) {
+                    return await interaction.editReply({ content: '❌ This button must be used in a server.' });
+                }
+                
+                const member = interaction.member;
+                const hasSupportRole = member.roles.cache.some(role => 
+                    role.name.toLowerCase().includes('support') || 
+                    role.name.toLowerCase().includes('agent') ||
+                    role.name.toLowerCase().includes('staff') ||
+                    member.permissions.has(PermissionFlagsBits.Administrator)
+                );
+                
+                if (!hasSupportRole) {
+                    return await interaction.editReply({ content: '❌ You do not have permission to claim conversations. You need a support agent role.' });
+                }
+                
+                // Claim the conversation (same logic as /claim command)
                 const user = await interaction.client.users.fetch(userId);
                 const currentAgent = activeConversations.get(userId);
                 
                 if (currentAgent && currentAgent !== null && currentAgent !== interaction.user.id) {
                     const agent = await interaction.client.users.fetch(currentAgent);
-                    return await interaction.reply({ content: `❌ This conversation is already claimed by ${agent.tag}.`, ephemeral: true });
+                    return await interaction.editReply({ content: `❌ This conversation is already claimed by ${agent.tag}.` });
                 }
                 
                 activeConversations.set(userId, interaction.user.id);
@@ -275,14 +278,21 @@ client.on(Events.InteractionCreate, async interaction => {
                 
                 await user.send({ embeds: [userEmbed] });
                 
-                await interaction.reply({ 
-                    content: `✅ You have claimed the conversation with ${user.tag}! Use \`/reply ${userId} <message>\` to respond.`, 
-                    ephemeral: true 
+                await interaction.editReply({ 
+                    content: `✅ You have claimed the conversation with ${user.tag}! Use \`/reply ${userId} <message>\` to respond.`
                 });
                 
             } catch (error) {
-                console.error('Error claiming via button:', error);
-                await interaction.reply({ content: `❌ Error: ${error.message}`, ephemeral: true });
+                console.error('[BUTTON] Error claiming via button:', error);
+                try {
+                    if (interaction.deferred) {
+                        await interaction.editReply({ content: `❌ Error: ${error.message}` });
+                    } else {
+                        await interaction.reply({ content: `❌ Error: ${error.message}`, ephemeral: true });
+                    }
+                } catch (replyError) {
+                    console.error('[BUTTON] Error replying to interaction:', replyError);
+                }
             }
             return;
         }
