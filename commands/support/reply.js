@@ -60,7 +60,25 @@ module.exports = {
                 return respond('❌ You do not have permission to reply to users. You need a support agent role.');
             }
             
-            const ticketIdInput = interaction.options.getInteger('ticket_id');
+            // Handle both INTEGER and STRING (in case Discord hasn't updated yet)
+            let ticketIdInput;
+            try {
+                ticketIdInput = interaction.options.getInteger('ticket_id');
+                if (ticketIdInput === null) {
+                    // Try as string if integer fails
+                    const strValue = interaction.options.getString('ticket_id');
+                    ticketIdInput = parseInt(strValue);
+                }
+            } catch (error) {
+                // Fallback to string
+                const strValue = interaction.options.getString('ticket_id');
+                ticketIdInput = parseInt(strValue);
+            }
+            
+            if (isNaN(ticketIdInput)) {
+                return respond(`❌ Invalid ticket ID. Please provide a number.`);
+            }
+            
             const message = interaction.options.getString('message');
             
             // Normalize ticket ID (convert to string for map lookup)
