@@ -14,20 +14,12 @@ module.exports = {
                 .setRequired(true)),
     
     async execute(interaction, context) {
-        try {
-            // Extract context properties with fallbacks
-            const activeTickets = context?.activeTickets || new Map();
-            const ticketHistory = context?.ticketHistory || new Map();
-            const tickets = context?.tickets || new Map();
-            
-            console.log('[REPLY] Command started', {
-                ticketIdInput: interaction.options?.getString('ticket_id'),
-                ticketsMapSize: tickets.size,
-                ticketsKeys: Array.from(tickets.keys()),
-                contextKeys: Object.keys(context || {})
-            });
-            
-            const respond = async (content, embed = null) => {
+        // Extract context properties with fallbacks
+        const activeTickets = context?.activeTickets || new Map();
+        const ticketHistory = context?.ticketHistory || new Map();
+        const tickets = context?.tickets || new Map();
+        
+        const respond = async (content, embed = null) => {
             try {
                 if (interaction.deferred || interaction.replied) {
                     return await interaction.editReply({ content: content || null, embeds: embed ? [embed] : [] });
@@ -43,30 +35,37 @@ module.exports = {
             }
         };
         
-        if (!interaction.member) {
-            return respond('❌ This command must be used in a server, not in DMs.');
-        }
-        
-        // Check if user has support agent role
-        const member = interaction.member;
-        const hasSupportRole = member.roles.cache.some(role => 
-            role.name.toLowerCase().includes('support') || 
-            role.name.toLowerCase().includes('agent') ||
-            role.name.toLowerCase().includes('staff') ||
-            member.permissions.has(PermissionFlagsBits.Administrator)
-        );
-        
-        if (!hasSupportRole) {
-            return respond('❌ You do not have permission to reply to users. You need a support agent role.');
-        }
-        
-        const ticketIdInput = interaction.options.getString('ticket_id');
-        const message = interaction.options.getString('message');
-        
-        // Normalize ticket ID (handle both string and number inputs)
-        const ticketId = ticketIdInput.trim();
-        
         try {
+            console.log('[REPLY] Command started', {
+                ticketIdInput: interaction.options?.getString('ticket_id'),
+                ticketsMapSize: tickets.size,
+                ticketsKeys: Array.from(tickets.keys()),
+                contextKeys: Object.keys(context || {})
+            });
+            
+            if (!interaction.member) {
+                return respond('❌ This command must be used in a server, not in DMs.');
+            }
+            
+            // Check if user has support agent role
+            const member = interaction.member;
+            const hasSupportRole = member.roles.cache.some(role => 
+                role.name.toLowerCase().includes('support') || 
+                role.name.toLowerCase().includes('agent') ||
+                role.name.toLowerCase().includes('staff') ||
+                member.permissions.has(PermissionFlagsBits.Administrator)
+            );
+            
+            if (!hasSupportRole) {
+                return respond('❌ You do not have permission to reply to users. You need a support agent role.');
+            }
+            
+            const ticketIdInput = interaction.options.getString('ticket_id');
+            const message = interaction.options.getString('message');
+            
+            // Normalize ticket ID (handle both string and number inputs)
+            const ticketId = ticketIdInput.trim();
+            
             // Look up ticket by ticket ID (try both string and number)
             let ticketData = tickets.get(ticketId);
             if (!ticketData) {
@@ -78,7 +77,7 @@ module.exports = {
             }
             
             if (!ticketData) {
-                return respond(`❌ Ticket \`${ticketId}\` not found. Make sure you're using the correct ticket ID.`);
+                return respond(`❌ Ticket \`${ticketId}\` not found. Make sure you're using the correct ticket ID.\n\nAvailable tickets: ${Array.from(tickets.keys()).join(', ') || 'none'}`);
             }
             
             const userId = ticketData.userId;
@@ -154,11 +153,11 @@ module.exports = {
             await respond(null, successEmbed);
             
         } catch (error) {
-            console.error('Error replying to user:', error);
-            console.error('Error stack:', error.stack);
-            console.error('Ticket ID provided:', ticketId);
-            console.error('Tickets map size:', tickets.size);
-            console.error('Tickets map keys:', Array.from(tickets.keys()));
+            console.error('[REPLY] Error:', error);
+            console.error('[REPLY] Stack:', error.stack);
+            console.error('[REPLY] Ticket ID:', interaction.options?.getString('ticket_id'));
+            console.error('[REPLY] Tickets map size:', tickets.size);
+            console.error('[REPLY] Tickets map keys:', Array.from(tickets.keys()));
             
             if (error.code === 50007) {
                 return respond('❌ Cannot send DM to this user. They may have DMs disabled.');
@@ -166,20 +165,7 @@ module.exports = {
             if (error.code === 10013) {
                 return respond(`❌ User not found. The ticket may be invalid.`);
             }
-            return respond(`❌ Error: ${error.message}\n\nDebug: Ticket ID "${ticketId}" not found in tickets map. Available tickets: ${Array.from(tickets.keys()).join(', ') || 'none'}`);
-        } catch (outerError) {
-            // Catch any errors that happen outside the try block
-            console.error('[REPLY] Outer error:', outerError);
-            console.error('[REPLY] Stack:', outerError.stack);
-            try {
-                if (interaction.replied || interaction.deferred) {
-                    await interaction.editReply({ content: `❌ Fatal error: ${outerError.message}` });
-                } else {
-                    await interaction.reply({ content: `❌ Fatal error: ${outerError.message}`, ephemeral: true });
-                }
-            } catch (replyError) {
-                console.error('[REPLY] Could not send error message:', replyError);
-            }
+            return respond(`❌ Error: ${error.message}\n\nDebug: Available tickets: ${Array.from(tickets.keys()).join(', ') || 'none'}`);
         }
     }
 };
