@@ -207,16 +207,22 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     
     try {
-        // Execute command - check if it expects new format (object) or old format (tickets Map)
-        // Try new format first (for reply/claim commands)
-        if (command.execute.length === 2) {
-            // New format: execute(interaction, { activeConversations, conversationHistory, tickets })
-            const tickets = new Map(); // Empty for compatibility
-            await command.execute(interaction, { activeConversations, conversationHistory, tickets });
-        } else {
-            // Old format: execute(interaction, tickets) - for backward compatibility
-            const tickets = new Map();
-            await command.execute(interaction, tickets);
+        // Execute command - pass context object
+        // New commands (reply, claim) expect: { activeConversations, conversationHistory, tickets }
+        // Old commands expect: tickets Map, but we'll pass object and they can access .tickets if needed
+        const tickets = new Map(); // Empty Map for old commands that still reference it
+        const context = { activeConversations, conversationHistory, tickets };
+        
+        // Try new format first, fallback to old format
+        try {
+            await command.execute(interaction, context);
+        } catch (formatError) {
+            // If new format fails, try old format (tickets Map)
+            if (formatError.message && formatError.message.includes('Cannot read')) {
+                await command.execute(interaction, tickets);
+            } else {
+                throw formatError;
+            }
         }
     } catch (error) {
         console.error(`Error executing ${interaction.commandName}:`, error);
