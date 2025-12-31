@@ -8,9 +8,10 @@ const sqlite3 = require('sqlite3').verbose();
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages
-        // Note: MessageContent and GuildMembers require privileged intents
-        // Enable them in Discord Developer Portal if needed
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.MessageContent // Required to read DM content - enable in Discord Developer Portal
+        // Note: MessageContent requires privileged intent - enable in Discord Developer Portal
     ]
 });
 
@@ -169,6 +170,22 @@ async function registerCommands() {
 client.once(Events.ClientReady, async () => {
     console.log(`Ready! Logged in as ${client.user.tag}`);
     await registerCommands();
+});
+
+// Event: Message create (for DMs)
+client.on(Events.MessageCreate, async message => {
+    // Ignore messages from bots
+    if (message.author.bot) return;
+    
+    // Only handle DMs (not server messages)
+    if (message.guild) return;
+    
+    try {
+        // Simple DM response - you can customize this
+        await message.reply('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me, or contact support staff for assistance.');
+    } catch (error) {
+        console.error('Error responding to DM:', error);
+    }
 });
 
 // Event: Interaction create
