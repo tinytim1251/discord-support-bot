@@ -14,12 +14,20 @@ module.exports = {
                 .setRequired(true)),
     
     async execute(interaction, context) {
-        // Extract context properties with fallbacks
-        const activeTickets = context?.activeTickets || new Map();
-        const ticketHistory = context?.ticketHistory || new Map();
-        const tickets = context?.tickets || new Map();
-        
-        const respond = async (content, embed = null) => {
+        try {
+            // Extract context properties with fallbacks
+            const activeTickets = context?.activeTickets || new Map();
+            const ticketHistory = context?.ticketHistory || new Map();
+            const tickets = context?.tickets || new Map();
+            
+            console.log('[REPLY] Command started', {
+                ticketIdInput: interaction.options?.getString('ticket_id'),
+                ticketsMapSize: tickets.size,
+                ticketsKeys: Array.from(tickets.keys()),
+                contextKeys: Object.keys(context || {})
+            });
+            
+            const respond = async (content, embed = null) => {
             try {
                 if (interaction.deferred || interaction.replied) {
                     return await interaction.editReply({ content: content || null, embeds: embed ? [embed] : [] });
@@ -159,6 +167,19 @@ module.exports = {
                 return respond(`❌ User not found. The ticket may be invalid.`);
             }
             return respond(`❌ Error: ${error.message}\n\nDebug: Ticket ID "${ticketId}" not found in tickets map. Available tickets: ${Array.from(tickets.keys()).join(', ') || 'none'}`);
+        } catch (outerError) {
+            // Catch any errors that happen outside the try block
+            console.error('[REPLY] Outer error:', outerError);
+            console.error('[REPLY] Stack:', outerError.stack);
+            try {
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.editReply({ content: `❌ Fatal error: ${outerError.message}` });
+                } else {
+                    await interaction.reply({ content: `❌ Fatal error: ${outerError.message}`, ephemeral: true });
+                }
+            } catch (replyError) {
+                console.error('[REPLY] Could not send error message:', replyError);
+            }
         }
     }
 };

@@ -427,13 +427,27 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     } catch (error) {
         console.error(`Error executing ${interaction.commandName}:`, error);
+        console.error('Error stack:', error.stack);
+        console.error('Error details:', {
+            message: error.message,
+            code: error.code,
+            name: error.name
+        });
         
-        const errorMessage = { content: 'There was an error while executing this command!', ephemeral: true };
+        // Show detailed error message to help debug
+        const errorMessage = { 
+            content: `❌ There was an error while executing this command!\n\n**Error:** ${error.message}\n\nCheck server logs for more details.`, 
+            ephemeral: true 
+        };
         
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(errorMessage);
-        } else {
-            await interaction.reply(errorMessage);
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp(errorMessage);
+            } else {
+                await interaction.reply(errorMessage);
+            }
+        } catch (replyError) {
+            console.error('Failed to send error message:', replyError);
         }
     }
 });
