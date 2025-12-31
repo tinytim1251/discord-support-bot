@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, Events, REST, Routes, ChannelType, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, REST, Routes, ChannelType, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -103,8 +103,40 @@ client.on(Events.MessageCreate, async message => {
     console.log(`[DM] Received DM from ${message.author.tag} (${message.author.id}): ${message.content || '(no content)'}`);
     
     try {
-        // Simple DM response - you can customize this
-        await message.reply('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me, or contact support staff for assistance.');
+        // Create an embed with options
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('👋 Hello! Welcome to Support')
+            .setDescription('I\'m here to help! Choose an option below:')
+            .addFields(
+                { name: '📝 Create Ticket', value: 'Open a new support ticket', inline: true },
+                { name: '👤 Speak to Agent', value: 'Get connected with a human agent', inline: true },
+                { name: '❓ Help', value: 'View available commands and information', inline: true }
+            )
+            .setFooter({ text: 'Support Bot' })
+            .setTimestamp();
+        
+        // Create buttons
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('dm_create_ticket')
+                    .setLabel('Create Ticket')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('📝'),
+                new ButtonBuilder()
+                    .setCustomId('dm_speak_agent')
+                    .setLabel('Speak to Agent')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('👤'),
+                new ButtonBuilder()
+                    .setCustomId('dm_help')
+                    .setLabel('Help')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('❓')
+            );
+        
+        await message.reply({ embeds: [embed], components: [row] });
         console.log(`[DM] Successfully replied to ${message.author.tag}`);
     } catch (error) {
         console.error('[DM] Error responding to DM:', error.message);
@@ -120,6 +152,46 @@ client.on(Events.MessageCreate, async message => {
 
 // Event: Interaction create
 client.on(Events.InteractionCreate, async interaction => {
+    // Handle button interactions (from DMs)
+    if (interaction.isButton()) {
+        const customId = interaction.customId;
+        
+        if (customId === 'dm_create_ticket') {
+            await interaction.reply({
+                content: '📝 To create a ticket, please use the `/` command in a server where I\'m present. Type `/` and look for ticket-related commands!',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        if (customId === 'dm_speak_agent') {
+            await interaction.reply({
+                content: '👤 To speak with a human agent, please join our support server and mention @Support or use the `/` commands. Our agents are ready to help!',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        if (customId === 'dm_help') {
+            const helpEmbed = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle('❓ Help - Available Commands')
+                .setDescription('Here are some commands you can use in a server:')
+                .addFields(
+                    { name: '/ping', value: 'Check if the bot is online', inline: false },
+                    { name: '/stats', value: 'View ticket statistics (Support Agents)', inline: false },
+                    { name: '/list', value: 'List all tickets (Support Agents)', inline: false },
+                    { name: '/view', value: 'View a specific ticket (Support Agents)', inline: false }
+                )
+                .setFooter({ text: 'Use / in a server to see all available commands' })
+                .setTimestamp();
+            
+            await interaction.reply({ embeds: [helpEmbed], ephemeral: true });
+            return;
+        }
+    }
+    
+    // Handle slash commands
     if (!interaction.isChatInputCommand()) return;
     
     const command = client.commands.get(interaction.commandName);
