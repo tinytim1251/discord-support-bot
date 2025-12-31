@@ -180,11 +180,15 @@ client.on(Events.MessageCreate, async message => {
     // Only handle DMs (not server messages)
     if (message.guild) return;
     
+    console.log(`[DM] Received DM from ${message.author.tag}: ${message.content}`);
+    
     try {
         // Simple DM response - you can customize this
         await message.reply('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me, or contact support staff for assistance.');
+        console.log(`[DM] Successfully replied to ${message.author.tag}`);
     } catch (error) {
-        console.error('Error responding to DM:', error);
+        console.error('[DM] Error responding to DM:', error.message);
+        console.error('[DM] Full error:', error);
     }
 });
 
