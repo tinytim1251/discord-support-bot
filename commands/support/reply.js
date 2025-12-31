@@ -13,7 +13,7 @@ module.exports = {
                 .setDescription('Your reply message')
                 .setRequired(true)),
     
-    async execute(interaction, { activeConversations, conversationHistory }) {
+    async execute(interaction, { activeConversations, conversationHistory, conversations }) {
         const respond = async (content, embed = null) => {
             try {
                 if (interaction.deferred || interaction.replied) {
@@ -65,6 +65,12 @@ module.exports = {
                     conversationId: conversationId,
                     createdAt: new Date()
                 });
+                // Update conversations map
+                conversations.set(conversationId, {
+                    userId: userId,
+                    agentId: interaction.user.id,
+                    createdAt: new Date()
+                });
             } else if (conversation.agentId && conversation.agentId !== interaction.user.id) {
                 return respond(`❌ This user is already being helped by another agent.`);
             } else {
@@ -75,6 +81,16 @@ module.exports = {
                     conversationId: conversationId,
                     createdAt: conversation.createdAt || new Date()
                 });
+                // Update conversations map
+                if (conversations.has(conversationId)) {
+                    conversations.get(conversationId).agentId = interaction.user.id;
+                } else {
+                    conversations.set(conversationId, {
+                        userId: userId,
+                        agentId: interaction.user.id,
+                        createdAt: conversation.createdAt || new Date()
+                    });
+                }
             }
             
             // Send message to user

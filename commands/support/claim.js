@@ -9,7 +9,7 @@ module.exports = {
                 .setDescription('The user ID to claim')
                 .setRequired(true)),
     
-    async execute(interaction, { activeConversations, conversationHistory }) {
+    async execute(interaction, { activeConversations, conversationHistory, conversations }) {
         const respond = async (content, embed = null) => {
             try {
                 if (interaction.deferred || interaction.replied) {

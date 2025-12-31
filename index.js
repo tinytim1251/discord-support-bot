@@ -174,7 +174,15 @@ client.on(Events.MessageCreate, async message => {
         // Forward message to agent
         try {
             const agent = await client.users.fetch(conversation.agentId);
-            const conversationId = conversation.conversationId;
+            const conversationId = conversation.conversationId || generateConversationId();
+            
+            // Ensure conversationId exists
+            if (!conversation.conversationId) {
+                activeConversations.set(userId, {
+                    ...conversation,
+                    conversationId: conversationId
+                });
+            }
             
             const agentEmbed = new EmbedBuilder()
                 .setColor(0x5865F2)
