@@ -43,26 +43,45 @@ module.exports = {
             return respond('❌ You do not have permission to claim conversations. You need a support agent role.');
         }
         
-        const userId = interaction.options.getString('user_id');
+            const userId = interaction.options.getString('user_id');
         
         try {
             const user = await interaction.client.users.fetch(userId);
             
             // Check if already claimed by someone else
-            const currentAgent = activeConversations.get(userId);
-            if (currentAgent && currentAgent !== null && currentAgent !== interaction.user.id) {
-                const agent = await interaction.client.users.fetch(currentAgent);
+            const conversation = activeConversations.get(userId);
+            if (!conversation) {
+                return respond(`❌ No active conversation found for this user.`);
+            }
+            
+            if (conversation.agentId && conversation.agentId !== interaction.user.id) {
+                const agent = await interaction.client.users.fetch(conversation.agentId);
                 return respond(`❌ This conversation is already claimed by ${agent.tag}.`);
             }
             
+            // Get or generate conversation ID
+            const conversationId = conversation.conversationId || `CONV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+            
             // Claim the conversation
-            activeConversations.set(userId, interaction.user.id);
+            activeConversations.set(userId, {
+                agentId: interaction.user.id,
+                conversationId: conversationId,
+                createdAt: conversation.createdAt || new Date()
+            });
+            
+            // Update conversations map
+            if (conversations.has(conversationId)) {
+                conversations.get(conversationId).agentId = interaction.user.id;
+            }
             
             // Notify the user
             const userEmbed = new EmbedBuilder()
                 .setColor(0x00FF00)
                 .setTitle('✅ Support Agent Connected')
                 .setDescription(`A support agent (${interaction.user.tag}) is now here to help you! You can start chatting.`)
+                .addFields(
+                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: false }
+                )
                 .setFooter({ text: 'Support Team' })
                 .setTimestamp();
             
@@ -74,6 +93,7 @@ module.exports = {
                 .setDescription(`You have claimed the conversation with ${user.tag}`)
                 .addFields(
                     { name: 'User', value: `${user.tag} (${userId})`, inline: true },
+                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: true },
                     { name: 'Status', value: 'Active', inline: true }
                 )
                 .setFooter({ text: 'Use /reply to send messages' })

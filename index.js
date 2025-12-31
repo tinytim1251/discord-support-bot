@@ -20,13 +20,20 @@ const client = new Client({
 // Initialize commands collection
 client.commands = new Collection();
 
-// Store active conversations: Map<userId, agentId>
+// Store active conversations: Map<userId, {agentId, conversationId, createdAt}>
 const activeConversations = new Map();
 // Store conversation history: Map<userId, [{from, content, timestamp}]>
 const conversationHistory = new Map();
+// Store conversation IDs: Map<conversationId, {userId, agentId, createdAt}>
+const conversations = new Map();
+
+// Generate conversation ID
+function generateConversationId() {
+    return `CONV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+}
 
 // Function to notify agents in server channel
-async function notifyAgents(client, user) {
+async function notifyAgents(client, user, conversationId) {
     // Try to find support channel - check client property first, then try to find channel named "support" or "support-requests"
     let channel = null;
     
@@ -65,8 +72,9 @@ async function notifyAgents(client, user) {
             .setDescription(`A user is requesting to speak with a support agent!`)
             .addFields(
                 { name: '👤 User', value: `${user.tag} (${user.id})`, inline: true },
+                { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: true },
                 { name: '⏰ Time', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
-                { name: '📝 Action', value: `Use \`/claim ${user.id}\` to claim this conversation`, inline: false }
+                { name: '📝 Action', value: `Click the button below or use \`/claim ${user.id}\` to claim this conversation`, inline: false }
             )
             .setThumbnail(user.displayAvatarURL())
             .setFooter({ text: 'Support Bot' })
@@ -159,13 +167,15 @@ client.on(Events.MessageCreate, async message => {
     }
     
     const userId = message.author.id;
-    const agentId = activeConversations.get(userId);
+    const conversation = activeConversations.get(userId);
     
     // If user has an active conversation with an agent
-    if (agentId) {
+    if (conversation && conversation.agentId) {
         // Forward message to agent
         try {
-            const agent = await client.users.fetch(agentId);
+            const agent = await client.users.fetch(conversation.agentId);
+            const conversationId = conversation.conversationId;
+            
             const agentEmbed = new EmbedBuilder()
                 .setColor(0x5865F2)
                 .setAuthor({ 
@@ -173,6 +183,9 @@ client.on(Events.MessageCreate, async message => {
                     iconURL: message.author.displayAvatarURL() 
                 })
                 .setDescription(message.content || '(No text content)')
+                .addFields(
+                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: true }
+                )
                 .setFooter({ text: 'Reply using: /reply <user_id> <message>' })
                 .setTimestamp();
             
@@ -182,7 +195,20 @@ client.on(Events.MessageCreate, async message => {
                 agentEmbed.addFields({ name: 'Attachments', value: attachmentUrls });
             }
             
-            await agent.send({ embeds: [agentEmbed] });
+            const agentMessage = await agent.send({ embeds: [agentEmbed] });
+            
+            // Send read receipt to user (green checkmark)
+            try {
+                const readReceipt = new EmbedBuilder()
+                    .setColor(0x00FF00)
+                    .setDescription('✅ Message delivered and read by support agent')
+                    .setTimestamp();
+                
+                await message.reply({ embeds: [readReceipt] });
+            } catch (receiptError) {
+                // If we can't send receipt, that's okay
+                console.log('[DM] Could not send read receipt:', receiptError.message);
+            }
             
             // Store in history
             if (!conversationHistory.has(userId)) {
@@ -194,7 +220,7 @@ client.on(Events.MessageCreate, async message => {
                 timestamp: new Date()
             });
             
-            console.log(`[DM] Forwarded message from ${message.author.tag} to agent ${agent.tag}`);
+            console.log(`[DM] Forwarded message from ${message.author.tag} to agent ${agent.tag} (${conversationId})`);
         } catch (error) {
             console.error('[DM] Error forwarding to agent:', error);
             await message.reply('❌ Error forwarding your message to the support agent. Please try again.');
@@ -259,27 +285,44 @@ client.on(Events.InteractionCreate, async interaction => {
                 
                 // Claim the conversation (same logic as /claim command)
                 const user = await interaction.client.users.fetch(userId);
-                const currentAgent = activeConversations.get(userId);
+                const conversation = activeConversations.get(userId);
                 
-                if (currentAgent && currentAgent !== null && currentAgent !== interaction.user.id) {
-                    const agent = await interaction.client.users.fetch(currentAgent);
+                if (!conversation) {
+                    return await interaction.editReply({ content: `❌ This conversation no longer exists.` });
+                }
+                
+                if (conversation.agentId && conversation.agentId !== interaction.user.id) {
+                    const agent = await interaction.client.users.fetch(conversation.agentId);
                     return await interaction.editReply({ content: `❌ This conversation is already claimed by ${agent.tag}.` });
                 }
                 
-                activeConversations.set(userId, interaction.user.id);
+                // Update conversation with agent ID
+                const conversationId = conversation.conversationId || generateConversationId();
+                activeConversations.set(userId, {
+                    agentId: interaction.user.id,
+                    conversationId: conversationId,
+                    createdAt: conversation.createdAt || new Date()
+                });
+                
+                if (conversations.has(conversationId)) {
+                    conversations.get(conversationId).agentId = interaction.user.id;
+                }
                 
                 // Notify the user
                 const userEmbed = new EmbedBuilder()
                     .setColor(0x00FF00)
                     .setTitle('✅ Support Agent Connected')
                     .setDescription(`A support agent (${interaction.user.tag}) is now here to help you! You can start chatting.`)
+                    .addFields(
+                        { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: false }
+                    )
                     .setFooter({ text: 'Support Team' })
                     .setTimestamp();
                 
                 await user.send({ embeds: [userEmbed] });
                 
                 await interaction.editReply({ 
-                    content: `✅ You have claimed the conversation with ${user.tag}! Use \`/reply ${userId} <message>\` to respond.`
+                    content: `✅ You have claimed the conversation with ${user.tag}!\n\n📋 **Conversation ID:** \`${conversationId}\`\n\nUse \`/reply ${userId} <message>\` to respond.`
                 });
                 
             } catch (error) {
@@ -301,29 +344,40 @@ client.on(Events.InteractionCreate, async interaction => {
             const userId = interaction.user.id;
             
             // Check if already in conversation
-            if (activeConversations.has(userId)) {
+            const existingConv = activeConversations.get(userId);
+            if (existingConv && existingConv.agentId) {
                 await interaction.reply({
-                    content: '✅ You are already connected to a support agent! Just send your message here.',
+                    content: `✅ You are already connected to a support agent! Your conversation ID is: \`${existingConv.conversationId}\`\n\nJust send your message here.`,
                     ephemeral: true
                 });
                 return;
             }
             
-            // For now, we'll need to assign an agent manually
-            // You can modify this to auto-assign from available agents
+            // Generate conversation ID
+            const conversationId = generateConversationId();
+            
+            // Store as waiting (no agent assigned yet)
+            activeConversations.set(userId, {
+                agentId: null,
+                conversationId: conversationId,
+                createdAt: new Date()
+            });
+            
+            conversations.set(conversationId, {
+                userId: userId,
+                agentId: null,
+                createdAt: new Date()
+            });
+            
             await interaction.reply({
-                content: '👤 Your request has been sent! An agent will be with you shortly. Please wait for an agent to connect...\n\n**Note:** Agents will be notified and can respond to you here in DMs.',
+                content: `👤 Your request has been sent! An agent will be with you shortly.\n\n📋 **Your Conversation ID:** \`${conversationId}\`\n\n**Note:** Agents will be notified and can respond to you here in DMs.`,
                 ephemeral: true
             });
             
-            // Store as waiting (no agent assigned yet)
-            // In a real system, you'd have a queue and assign agents
-            activeConversations.set(userId, null); // null means waiting for agent
-            
-            console.log(`[DM] User ${interaction.user.tag} requested agent`);
+            console.log(`[DM] User ${interaction.user.tag} requested agent (${conversationId})`);
             
             // Notify agents in the support channel
-            await notifyAgents(interaction.client, interaction.user);
+            await notifyAgents(interaction.client, interaction.user, conversationId);
             
             return;
         }

@@ -54,14 +54,27 @@ module.exports = {
             const user = await interaction.client.users.fetch(userId);
             
             // Check if conversation exists
-            if (!activeConversations.has(userId)) {
-                // Create conversation
-                activeConversations.set(userId, interaction.user.id);
-            } else if (activeConversations.get(userId) !== interaction.user.id && activeConversations.get(userId) !== null) {
+            const conversation = activeConversations.get(userId);
+            let conversationId;
+            
+            if (!conversation) {
+                // Create new conversation
+                conversationId = `CONV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+                activeConversations.set(userId, {
+                    agentId: interaction.user.id,
+                    conversationId: conversationId,
+                    createdAt: new Date()
+                });
+            } else if (conversation.agentId && conversation.agentId !== interaction.user.id) {
                 return respond(`❌ This user is already being helped by another agent.`);
             } else {
-                // Claim the conversation
-                activeConversations.set(userId, interaction.user.id);
+                // Claim the conversation if not already claimed
+                conversationId = conversation.conversationId || `CONV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+                activeConversations.set(userId, {
+                    agentId: interaction.user.id,
+                    conversationId: conversationId,
+                    createdAt: conversation.createdAt || new Date()
+                });
             }
             
             // Send message to user
@@ -72,6 +85,9 @@ module.exports = {
                     iconURL: interaction.user.displayAvatarURL() 
                 })
                 .setDescription(message)
+                .addFields(
+                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: false }
+                )
                 .setFooter({ text: 'Support Team' })
                 .setTimestamp();
             
@@ -95,6 +111,7 @@ module.exports = {
                 .setDescription(`Your reply has been sent to ${user.tag}`)
                 .addFields(
                     { name: 'User', value: `${user.tag} (${userId})`, inline: true },
+                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: true },
                     { name: 'Message', value: message, inline: false }
                 )
                 .setTimestamp();
