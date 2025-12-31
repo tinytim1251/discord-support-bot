@@ -395,10 +395,10 @@ client.on(Events.InteractionCreate, async interaction => {
     
     try {
         // Execute command - pass context object
-        // New commands (reply, claim) expect: { activeConversations, conversationHistory, tickets }
+        // New commands (reply, claim) expect: { activeConversations, conversationHistory, conversations, tickets }
         // Old commands expect: tickets Map, but we'll pass object and they can access .tickets if needed
         const tickets = new Map(); // Empty Map for old commands that still reference it
-        const context = { activeConversations, conversationHistory, tickets };
+        const context = { activeConversations, conversationHistory, conversations, tickets };
         
         // Try new format first, fallback to old format
         try {
