@@ -330,7 +330,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 await user.send({ embeds: [userEmbed] });
                 
                 await interaction.editReply({ 
-                    content: `✅ You have claimed the ticket with ${user.tag}!\n\n📋 **Ticket ID:** \`${ticketId}\`\n\nUse \`/reply ${userId} <message>\` to respond.`
+                    content: `✅ You have claimed the ticket with ${user.tag}!\n\n📋 **Ticket ID:** \`${ticketId}\`\n\nUse \`/reply ${ticketId} <message>\` to respond.`
                 });
                 
             } catch (error) {
