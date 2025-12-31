@@ -208,7 +208,9 @@ client.on(Events.InteractionCreate, async interaction => {
     
     try {
         // Execute command - pass activeConversations for agent commands
-        await command.execute(interaction, { activeConversations, conversationHistory });
+        // Some commands may expect tickets Map (old system), so pass empty Map for compatibility
+        const tickets = new Map(); // Empty for compatibility with old commands
+        await command.execute(interaction, { activeConversations, conversationHistory, tickets });
     } catch (error) {
         console.error(`Error executing ${interaction.commandName}:`, error);
         
