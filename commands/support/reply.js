@@ -5,8 +5,8 @@ module.exports = {
         .setName('reply')
         .setDescription('Reply to a user in DM (Support Agents only)')
         .addStringOption(option =>
-            option.setName('user_id')
-                .setDescription('The user ID to reply to')
+            option.setName('ticket_id')
+                .setDescription('The ticket ID to reply to')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('message')
@@ -47,50 +47,46 @@ module.exports = {
             return respond('❌ You do not have permission to reply to users. You need a support agent role.');
         }
         
-        const userId = interaction.options.getString('user_id');
+        const ticketId = interaction.options.getString('ticket_id');
         const message = interaction.options.getString('message');
         
         try {
+            // Look up ticket by ticket ID
+            const ticketData = tickets.get(ticketId);
+            
+            if (!ticketData) {
+                return respond(`❌ Ticket \`${ticketId}\` not found. Make sure you're using the correct ticket ID.`);
+            }
+            
+            const userId = ticketData.userId;
             const user = await interaction.client.users.fetch(userId);
             
-            // Check if ticket exists
-            const ticket = activeTickets.get(userId);
-            let ticketId;
+            // Get or update active ticket
+            const activeTicket = activeTickets.get(userId);
             
-            if (!ticket) {
-                // Create new ticket
-                ticketId = `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+            if (activeTicket && activeTicket.agentId && activeTicket.agentId !== interaction.user.id) {
+                return respond(`❌ This ticket is already being handled by another agent.`);
+            }
+            
+            // Update active ticket if needed
+            if (!activeTicket || activeTicket.ticketId !== ticketId) {
                 activeTickets.set(userId, {
                     agentId: interaction.user.id,
                     ticketId: ticketId,
-                    createdAt: new Date()
+                    createdAt: ticketData.createdAt || new Date()
                 });
-                // Update tickets map
-                tickets.set(ticketId, {
-                    userId: userId,
-                    agentId: interaction.user.id,
-                    createdAt: new Date()
-                });
-            } else if (ticket.agentId && ticket.agentId !== interaction.user.id) {
-                return respond(`❌ This user is already being helped by another agent.`);
-            } else {
+            } else if (!activeTicket.agentId) {
                 // Claim the ticket if not already claimed
-                ticketId = ticket.ticketId || `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
                 activeTickets.set(userId, {
                     agentId: interaction.user.id,
                     ticketId: ticketId,
-                    createdAt: ticket.createdAt || new Date()
+                    createdAt: activeTicket.createdAt || ticketData.createdAt || new Date()
                 });
-                // Update tickets map
-                if (tickets.has(ticketId)) {
-                    tickets.get(ticketId).agentId = interaction.user.id;
-                } else {
-                    tickets.set(ticketId, {
-                        userId: userId,
-                        agentId: interaction.user.id,
-                        createdAt: ticket.createdAt || new Date()
-                    });
-                }
+            }
+            
+            // Update tickets map with agent ID
+            if (tickets.has(ticketId)) {
+                tickets.get(ticketId).agentId = interaction.user.id;
             }
             
             // Send message to user
@@ -138,6 +134,9 @@ module.exports = {
             console.error('Error replying to user:', error);
             if (error.code === 50007) {
                 return respond('❌ Cannot send DM to this user. They may have DMs disabled.');
+            }
+            if (error.code === 10013) {
+                return respond(`❌ User not found. The ticket may be invalid.`);
             }
             return respond(`❌ Error: ${error.message}`);
         }

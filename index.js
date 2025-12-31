@@ -194,7 +194,7 @@ client.on(Events.MessageCreate, async message => {
                 .addFields(
                     { name: '📋 Ticket ID', value: `\`${ticketId}\``, inline: true }
                 )
-                .setFooter({ text: 'Reply using: /reply <user_id> <message>' })
+                .setFooter({ text: 'Reply using: /reply <ticket_id> <message>' })
                 .setTimestamp();
             
             // Add attachments if any
