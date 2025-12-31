@@ -207,10 +207,17 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     
     try {
-        // Execute command - pass activeConversations for agent commands
-        // Some commands may expect tickets Map (old system), so pass empty Map for compatibility
-        const tickets = new Map(); // Empty for compatibility with old commands
-        await command.execute(interaction, { activeConversations, conversationHistory, tickets });
+        // Execute command - check if it expects new format (object) or old format (tickets Map)
+        // Try new format first (for reply/claim commands)
+        if (command.execute.length === 2) {
+            // New format: execute(interaction, { activeConversations, conversationHistory, tickets })
+            const tickets = new Map(); // Empty for compatibility
+            await command.execute(interaction, { activeConversations, conversationHistory, tickets });
+        } else {
+            // Old format: execute(interaction, tickets) - for backward compatibility
+            const tickets = new Map();
+            await command.execute(interaction, tickets);
+        }
     } catch (error) {
         console.error(`Error executing ${interaction.commandName}:`, error);
         
