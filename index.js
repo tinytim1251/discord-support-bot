@@ -27,9 +27,14 @@ const ticketHistory = new Map();
 // Store ticket IDs: Map<ticketId, {userId, agentId, createdAt}>
 const tickets = new Map();
 
-// Generate ticket ID
+// Ticket ID counter (starts from 1)
+let ticketIdCounter = 1;
+
+// Generate ticket ID (simple numeric)
 function generateTicketId() {
-    return `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    const ticketId = ticketIdCounter.toString();
+    ticketIdCounter++;
+    return ticketId;
 }
 
 // Function to notify agents in server channel

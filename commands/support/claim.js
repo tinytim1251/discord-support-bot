@@ -59,8 +59,8 @@ module.exports = {
                 return respond(`❌ This ticket is already claimed by ${agent.tag}.`);
             }
             
-            // Get or generate ticket ID
-            const ticketId = ticket.ticketId || `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+            // Get or generate ticket ID (simple numeric)
+            const ticketId = ticket.ticketId || Date.now().toString();
             
             // Claim the ticket
             activeTickets.set(userId, {
