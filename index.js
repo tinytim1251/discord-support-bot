@@ -354,8 +354,9 @@ client.on(Events.InteractionCreate, async interaction => {
             // Check if already in conversation
             const existingConv = activeConversations.get(userId);
             if (existingConv && existingConv.agentId) {
+                const convId = existingConv.conversationId || 'N/A';
                 await interaction.reply({
-                    content: `✅ You are already connected to a support agent! Your conversation ID is: \`${existingConv.conversationId}\`\n\nJust send your message here.`,
+                    content: `✅ You are already connected to a support agent! Your conversation ID is: \`${convId}\`\n\nJust send your message here.`,
                     ephemeral: true
                 });
                 return;
