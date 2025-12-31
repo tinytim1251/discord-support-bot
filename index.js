@@ -20,20 +20,20 @@ const client = new Client({
 // Initialize commands collection
 client.commands = new Collection();
 
-// Store active conversations: Map<userId, {agentId, conversationId, createdAt}>
-const activeConversations = new Map();
-// Store conversation history: Map<userId, [{from, content, timestamp}]>
-const conversationHistory = new Map();
-// Store conversation IDs: Map<conversationId, {userId, agentId, createdAt}>
-const conversations = new Map();
+// Store active tickets: Map<userId, {agentId, ticketId, createdAt}>
+const activeTickets = new Map();
+// Store ticket history: Map<userId, [{from, content, timestamp}]>
+const ticketHistory = new Map();
+// Store ticket IDs: Map<ticketId, {userId, agentId, createdAt}>
+const tickets = new Map();
 
-// Generate conversation ID
-function generateConversationId() {
-    return `CONV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+// Generate ticket ID
+function generateTicketId() {
+    return `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 }
 
 // Function to notify agents in server channel
-async function notifyAgents(client, user, conversationId) {
+async function notifyAgents(client, user, ticketId) {
     // Try to find support channel - check client property first, then try to find channel named "support" or "support-requests"
     let channel = null;
     
@@ -72,9 +72,9 @@ async function notifyAgents(client, user, conversationId) {
             .setDescription(`A user is requesting to speak with a support agent!`)
             .addFields(
                 { name: '👤 User', value: `${user.tag} (${user.id})`, inline: true },
-                { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: true },
+                { name: '📋 Ticket ID', value: `\`${ticketId}\``, inline: true },
                 { name: '⏰ Time', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
-                { name: '📝 Action', value: `Click the button below or use \`/claim ${user.id}\` to claim this conversation`, inline: false }
+                { name: '📝 Action', value: `Click the button below or use \`/claim ${user.id}\` to claim this ticket`, inline: false }
             )
             .setThumbnail(user.displayAvatarURL())
             .setFooter({ text: 'Support Bot' })
@@ -167,20 +167,20 @@ client.on(Events.MessageCreate, async message => {
     }
     
     const userId = message.author.id;
-    const conversation = activeConversations.get(userId);
+    const ticket = activeTickets.get(userId);
     
-    // If user has an active conversation with an agent
-    if (conversation && conversation.agentId) {
+    // If user has an active ticket with an agent
+    if (ticket && ticket.agentId) {
         // Forward message to agent
         try {
-            const agent = await client.users.fetch(conversation.agentId);
-            const conversationId = conversation.conversationId || generateConversationId();
+            const agent = await client.users.fetch(ticket.agentId);
+            const ticketId = ticket.ticketId || generateTicketId();
             
-            // Ensure conversationId exists
-            if (!conversation.conversationId) {
-                activeConversations.set(userId, {
-                    ...conversation,
-                    conversationId: conversationId
+            // Ensure ticketId exists
+            if (!ticket.ticketId) {
+                activeTickets.set(userId, {
+                    ...ticket,
+                    ticketId: ticketId
                 });
             }
             
@@ -192,7 +192,7 @@ client.on(Events.MessageCreate, async message => {
                 })
                 .setDescription(message.content || '(No text content)')
                 .addFields(
-                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: true }
+                    { name: '📋 Ticket ID', value: `\`${ticketId}\``, inline: true }
                 )
                 .setFooter({ text: 'Reply using: /reply <user_id> <message>' })
                 .setTimestamp();
@@ -219,16 +219,16 @@ client.on(Events.MessageCreate, async message => {
             }
             
             // Store in history
-            if (!conversationHistory.has(userId)) {
-                conversationHistory.set(userId, []);
+            if (!ticketHistory.has(userId)) {
+                ticketHistory.set(userId, []);
             }
-            conversationHistory.get(userId).push({
+            ticketHistory.get(userId).push({
                 from: 'user',
                 content: message.content,
                 timestamp: new Date()
             });
             
-            console.log(`[DM] Forwarded message from ${message.author.tag} to agent ${agent.tag} (${conversationId})`);
+            console.log(`[DM] Forwarded message from ${message.author.tag} to agent ${agent.tag} (${ticketId})`);
         } catch (error) {
             console.error('[DM] Error forwarding to agent:', error);
             await message.reply('❌ Error forwarding your message to the support agent. Please try again.');
@@ -243,7 +243,7 @@ client.on(Events.MessageCreate, async message => {
         const embed = new EmbedBuilder()
             .setColor(0x5865F2)
             .setTitle('👋 Hello! Welcome to Support')
-            .setDescription('Click the button below to connect with a support agent. All conversations happen here in DMs.')
+            .setDescription('Click the button below to open a support ticket. A support agent will be with you shortly.')
             .setFooter({ text: 'Support Bot' })
             .setTimestamp();
         
@@ -291,29 +291,29 @@ client.on(Events.InteractionCreate, async interaction => {
                     return await interaction.editReply({ content: '❌ You do not have permission to claim conversations. You need a support agent role.' });
                 }
                 
-                // Claim the conversation (same logic as /claim command)
+                // Claim the ticket (same logic as /claim command)
                 const user = await interaction.client.users.fetch(userId);
-                const conversation = activeConversations.get(userId);
+                const ticket = activeTickets.get(userId);
                 
-                if (!conversation) {
-                    return await interaction.editReply({ content: `❌ This conversation no longer exists.` });
+                if (!ticket) {
+                    return await interaction.editReply({ content: `❌ This ticket no longer exists.` });
                 }
                 
-                if (conversation.agentId && conversation.agentId !== interaction.user.id) {
-                    const agent = await interaction.client.users.fetch(conversation.agentId);
-                    return await interaction.editReply({ content: `❌ This conversation is already claimed by ${agent.tag}.` });
+                if (ticket.agentId && ticket.agentId !== interaction.user.id) {
+                    const agent = await interaction.client.users.fetch(ticket.agentId);
+                    return await interaction.editReply({ content: `❌ This ticket is already claimed by ${agent.tag}.` });
                 }
                 
-                // Update conversation with agent ID
-                const conversationId = conversation.conversationId || generateConversationId();
-                activeConversations.set(userId, {
+                // Update ticket with agent ID
+                const ticketId = ticket.ticketId || generateTicketId();
+                activeTickets.set(userId, {
                     agentId: interaction.user.id,
-                    conversationId: conversationId,
-                    createdAt: conversation.createdAt || new Date()
+                    ticketId: ticketId,
+                    createdAt: ticket.createdAt || new Date()
                 });
                 
-                if (conversations.has(conversationId)) {
-                    conversations.get(conversationId).agentId = interaction.user.id;
+                if (tickets.has(ticketId)) {
+                    tickets.get(ticketId).agentId = interaction.user.id;
                 }
                 
                 // Notify the user
@@ -322,7 +322,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     .setTitle('✅ Support Agent Connected')
                     .setDescription(`A support agent (${interaction.user.tag}) is now here to help you! You can start chatting.`)
                     .addFields(
-                        { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: false }
+                        { name: '📋 Ticket ID', value: `\`${ticketId}\``, inline: false }
                     )
                     .setFooter({ text: 'Support Team' })
                     .setTimestamp();
@@ -330,7 +330,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 await user.send({ embeds: [userEmbed] });
                 
                 await interaction.editReply({ 
-                    content: `✅ You have claimed the conversation with ${user.tag}!\n\n📋 **Conversation ID:** \`${conversationId}\`\n\nUse \`/reply ${userId} <message>\` to respond.`
+                    content: `✅ You have claimed the ticket with ${user.tag}!\n\n📋 **Ticket ID:** \`${ticketId}\`\n\nUse \`/reply ${userId} <message>\` to respond.`
                 });
                 
             } catch (error) {
@@ -351,42 +351,42 @@ client.on(Events.InteractionCreate, async interaction => {
         if (interaction.customId === 'dm_speak_agent') {
             const userId = interaction.user.id;
             
-            // Check if already in conversation
-            const existingConv = activeConversations.get(userId);
-            if (existingConv && existingConv.agentId) {
-                const convId = existingConv.conversationId || 'N/A';
+            // Check if already has a ticket
+            const existingTicket = activeTickets.get(userId);
+            if (existingTicket && existingTicket.agentId) {
+                const ticketId = existingTicket.ticketId || 'N/A';
                 await interaction.reply({
-                    content: `✅ You are already connected to a support agent! Your conversation ID is: \`${convId}\`\n\nJust send your message here.`,
+                    content: `✅ You are already connected to a support agent! Your ticket ID is: \`${ticketId}\`\n\nJust send your message here.`,
                     ephemeral: true
                 });
                 return;
             }
             
-            // Generate conversation ID
-            const conversationId = generateConversationId();
+            // Generate ticket ID
+            const ticketId = generateTicketId();
             
             // Store as waiting (no agent assigned yet)
-            activeConversations.set(userId, {
+            activeTickets.set(userId, {
                 agentId: null,
-                conversationId: conversationId,
+                ticketId: ticketId,
                 createdAt: new Date()
             });
             
-            conversations.set(conversationId, {
+            tickets.set(ticketId, {
                 userId: userId,
                 agentId: null,
                 createdAt: new Date()
             });
             
             await interaction.reply({
-                content: `👤 Your request has been sent! An agent will be with you shortly.\n\n📋 **Your Conversation ID:** \`${conversationId}\`\n\n**Note:** Agents will be notified and can respond to you here in DMs.`,
+                content: `👤 A support agent will be with you shortly.\n\n📋 **Your Ticket ID:** \`${ticketId}\`\n\n**Note:** Agents will be notified and can respond to you here in DMs.`,
                 ephemeral: true
             });
             
-            console.log(`[DM] User ${interaction.user.tag} requested agent (${conversationId})`);
+            console.log(`[DM] User ${interaction.user.tag} opened ticket (${ticketId})`);
             
             // Notify agents in the support channel
-            await notifyAgents(interaction.client, interaction.user, conversationId);
+            await notifyAgents(interaction.client, interaction.user, ticketId);
             
             return;
         }
@@ -404,10 +404,10 @@ client.on(Events.InteractionCreate, async interaction => {
     
     try {
         // Execute command - pass context object
-        // New commands (reply, claim) expect: { activeConversations, conversationHistory, conversations, tickets }
+        // New commands (reply, claim) expect: { activeTickets, ticketHistory, tickets }
         // Old commands expect: tickets Map, but we'll pass object and they can access .tickets if needed
-        const tickets = new Map(); // Empty Map for old commands that still reference it
-        const context = { activeConversations, conversationHistory, conversations, tickets };
+        const oldTickets = new Map(); // Empty Map for old commands that still reference it
+        const context = { activeTickets, ticketHistory, tickets, tickets: oldTickets };
         
         // Try new format first, fallback to old format
         try {

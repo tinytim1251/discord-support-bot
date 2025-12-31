@@ -3,13 +3,13 @@ const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('disc
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('claim')
-        .setDescription('Claim a conversation with a user (Support Agents only)')
+        .setDescription('Claim a ticket with a user (Support Agents only)')
         .addStringOption(option =>
             option.setName('user_id')
                 .setDescription('The user ID to claim')
                 .setRequired(true)),
     
-    async execute(interaction, { activeConversations, conversationHistory, conversations }) {
+    async execute(interaction, { activeTickets, ticketHistory, tickets }) {
         const respond = async (content, embed = null) => {
             try {
                 if (interaction.deferred || interaction.replied) {
@@ -40,38 +40,38 @@ module.exports = {
         );
         
         if (!hasSupportRole) {
-            return respond('❌ You do not have permission to claim conversations. You need a support agent role.');
+            return respond('❌ You do not have permission to claim tickets. You need a support agent role.');
         }
         
-            const userId = interaction.options.getString('user_id');
+        const userId = interaction.options.getString('user_id');
         
         try {
             const user = await interaction.client.users.fetch(userId);
             
             // Check if already claimed by someone else
-            const conversation = activeConversations.get(userId);
-            if (!conversation) {
-                return respond(`❌ No active conversation found for this user.`);
+            const ticket = activeTickets.get(userId);
+            if (!ticket) {
+                return respond(`❌ No active ticket found for this user.`);
             }
             
-            if (conversation.agentId && conversation.agentId !== interaction.user.id) {
-                const agent = await interaction.client.users.fetch(conversation.agentId);
-                return respond(`❌ This conversation is already claimed by ${agent.tag}.`);
+            if (ticket.agentId && ticket.agentId !== interaction.user.id) {
+                const agent = await interaction.client.users.fetch(ticket.agentId);
+                return respond(`❌ This ticket is already claimed by ${agent.tag}.`);
             }
             
-            // Get or generate conversation ID
-            const conversationId = conversation.conversationId || `CONV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+            // Get or generate ticket ID
+            const ticketId = ticket.ticketId || `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
             
-            // Claim the conversation
-            activeConversations.set(userId, {
+            // Claim the ticket
+            activeTickets.set(userId, {
                 agentId: interaction.user.id,
-                conversationId: conversationId,
-                createdAt: conversation.createdAt || new Date()
+                ticketId: ticketId,
+                createdAt: ticket.createdAt || new Date()
             });
             
-            // Update conversations map
-            if (conversations.has(conversationId)) {
-                conversations.get(conversationId).agentId = interaction.user.id;
+            // Update tickets map
+            if (tickets.has(ticketId)) {
+                tickets.get(ticketId).agentId = interaction.user.id;
             }
             
             // Notify the user
@@ -80,7 +80,7 @@ module.exports = {
                 .setTitle('✅ Support Agent Connected')
                 .setDescription(`A support agent (${interaction.user.tag}) is now here to help you! You can start chatting.`)
                 .addFields(
-                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: false }
+                    { name: '📋 Ticket ID', value: `\`${ticketId}\``, inline: false }
                 )
                 .setFooter({ text: 'Support Team' })
                 .setTimestamp();
@@ -89,11 +89,11 @@ module.exports = {
             
             const successEmbed = new EmbedBuilder()
                 .setColor(0x00FF00)
-                .setTitle('✅ Conversation Claimed')
-                .setDescription(`You have claimed the conversation with ${user.tag}`)
+                .setTitle('✅ Ticket Claimed')
+                .setDescription(`You have claimed the ticket with ${user.tag}`)
                 .addFields(
                     { name: 'User', value: `${user.tag} (${userId})`, inline: true },
-                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: true },
+                    { name: '📋 Ticket ID', value: `\`${ticketId}\``, inline: true },
                     { name: 'Status', value: 'Active', inline: true }
                 )
                 .setFooter({ text: 'Use /reply to send messages' })
@@ -102,7 +102,7 @@ module.exports = {
             await respond(null, successEmbed);
             
         } catch (error) {
-            console.error('Error claiming conversation:', error);
+            console.error('Error claiming ticket:', error);
             if (error.code === 50007) {
                 return respond('❌ Cannot send DM to this user. They may have DMs disabled.');
             }

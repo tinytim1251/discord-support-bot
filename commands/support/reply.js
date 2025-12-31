@@ -13,7 +13,7 @@ module.exports = {
                 .setDescription('Your reply message')
                 .setRequired(true)),
     
-    async execute(interaction, { activeConversations, conversationHistory, conversations }) {
+    async execute(interaction, { activeTickets, ticketHistory, tickets }) {
         const respond = async (content, embed = null) => {
             try {
                 if (interaction.deferred || interaction.replied) {
@@ -53,42 +53,42 @@ module.exports = {
         try {
             const user = await interaction.client.users.fetch(userId);
             
-            // Check if conversation exists
-            const conversation = activeConversations.get(userId);
-            let conversationId;
+            // Check if ticket exists
+            const ticket = activeTickets.get(userId);
+            let ticketId;
             
-            if (!conversation) {
-                // Create new conversation
-                conversationId = `CONV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-                activeConversations.set(userId, {
+            if (!ticket) {
+                // Create new ticket
+                ticketId = `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+                activeTickets.set(userId, {
                     agentId: interaction.user.id,
-                    conversationId: conversationId,
+                    ticketId: ticketId,
                     createdAt: new Date()
                 });
-                // Update conversations map
-                conversations.set(conversationId, {
+                // Update tickets map
+                tickets.set(ticketId, {
                     userId: userId,
                     agentId: interaction.user.id,
                     createdAt: new Date()
                 });
-            } else if (conversation.agentId && conversation.agentId !== interaction.user.id) {
+            } else if (ticket.agentId && ticket.agentId !== interaction.user.id) {
                 return respond(`❌ This user is already being helped by another agent.`);
             } else {
-                // Claim the conversation if not already claimed
-                conversationId = conversation.conversationId || `CONV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-                activeConversations.set(userId, {
+                // Claim the ticket if not already claimed
+                ticketId = ticket.ticketId || `TICKET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+                activeTickets.set(userId, {
                     agentId: interaction.user.id,
-                    conversationId: conversationId,
-                    createdAt: conversation.createdAt || new Date()
+                    ticketId: ticketId,
+                    createdAt: ticket.createdAt || new Date()
                 });
-                // Update conversations map
-                if (conversations.has(conversationId)) {
-                    conversations.get(conversationId).agentId = interaction.user.id;
+                // Update tickets map
+                if (tickets.has(ticketId)) {
+                    tickets.get(ticketId).agentId = interaction.user.id;
                 } else {
-                    conversations.set(conversationId, {
+                    tickets.set(ticketId, {
                         userId: userId,
                         agentId: interaction.user.id,
-                        createdAt: conversation.createdAt || new Date()
+                        createdAt: ticket.createdAt || new Date()
                     });
                 }
             }
@@ -102,7 +102,7 @@ module.exports = {
                 })
                 .setDescription(message)
                 .addFields(
-                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: false }
+                    { name: '📋 Ticket ID', value: `\`${ticketId}\``, inline: false }
                 )
                 .setFooter({ text: 'Support Team' })
                 .setTimestamp();
@@ -110,10 +110,10 @@ module.exports = {
             await user.send({ embeds: [userEmbed] });
             
             // Store in history
-            if (!conversationHistory.has(userId)) {
-                conversationHistory.set(userId, []);
+            if (!ticketHistory.has(userId)) {
+                ticketHistory.set(userId, []);
             }
-            conversationHistory.get(userId).push({
+            ticketHistory.get(userId).push({
                 from: 'agent',
                 agentId: interaction.user.id,
                 agentName: interaction.user.tag,
@@ -127,7 +127,7 @@ module.exports = {
                 .setDescription(`Your reply has been sent to ${user.tag}`)
                 .addFields(
                     { name: 'User', value: `${user.tag} (${userId})`, inline: true },
-                    { name: '📋 Conversation ID', value: `\`${conversationId}\``, inline: true },
+                    { name: '📋 Ticket ID', value: `\`${ticketId}\``, inline: true },
                     { name: 'Message', value: message, inline: false }
                 )
                 .setTimestamp();
