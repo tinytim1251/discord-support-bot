@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, Events, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, REST, Routes, ChannelType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
@@ -174,21 +174,34 @@ client.once(Events.ClientReady, async () => {
 
 // Event: Message create (for DMs)
 client.on(Events.MessageCreate, async message => {
-    // Ignore messages from bots
+    // Ignore messages from bots (including self)
     if (message.author.bot) return;
     
-    // Only handle DMs (not server messages)
-    if (message.guild) return;
+    // Debug: Log all messages to see what we're receiving
+    console.log(`[MESSAGE] Type: ${message.channel.type}, Guild: ${message.guild ? message.guild.name : 'DM'}, Author: ${message.author.tag}`);
     
-    console.log(`[DM] Received DM from ${message.author.tag}: ${message.content}`);
+    // Only handle DMs (not server messages)
+    // Check both ways: no guild AND channel type is DM
+    if (message.guild || message.channel.type !== ChannelType.DM) {
+        return; // Not a DM, ignore
+    }
+    
+    console.log(`[DM] Received DM from ${message.author.tag} (${message.author.id}): ${message.content || '(no content)'}`);
     
     try {
         // Simple DM response - you can customize this
-        await message.reply('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me, or contact support staff for assistance.');
+        const response = await message.reply('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me, or contact support staff for assistance.');
         console.log(`[DM] Successfully replied to ${message.author.tag}`);
     } catch (error) {
         console.error('[DM] Error responding to DM:', error.message);
-        console.error('[DM] Full error:', error);
+        console.error('[DM] Error stack:', error.stack);
+        // Try sending a regular message instead of reply
+        try {
+            await message.channel.send('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me.');
+            console.log(`[DM] Sent message via channel.send instead`);
+        } catch (error2) {
+            console.error('[DM] Both reply and send failed:', error2.message);
+        }
     }
 });
 
