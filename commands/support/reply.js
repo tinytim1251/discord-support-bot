@@ -52,12 +52,22 @@ module.exports = {
             return respond('❌ You do not have permission to reply to users. You need a support agent role.');
         }
         
-        const ticketId = interaction.options.getString('ticket_id');
+        const ticketIdInput = interaction.options.getString('ticket_id');
         const message = interaction.options.getString('message');
         
+        // Normalize ticket ID (handle both string and number inputs)
+        const ticketId = ticketIdInput.trim();
+        
         try {
-            // Look up ticket by ticket ID
-            const ticketData = tickets.get(ticketId);
+            // Look up ticket by ticket ID (try both string and number)
+            let ticketData = tickets.get(ticketId);
+            if (!ticketData) {
+                // Try as number if it's a numeric string
+                const numericId = parseInt(ticketId);
+                if (!isNaN(numericId)) {
+                    ticketData = tickets.get(numericId.toString());
+                }
+            }
             
             if (!ticketData) {
                 return respond(`❌ Ticket \`${ticketId}\` not found. Make sure you're using the correct ticket ID.`);
