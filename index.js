@@ -75,17 +75,28 @@ async function registerCommands() {
 // Event: Bot ready
 client.once(Events.ClientReady, async () => {
     console.log(`Ready! Logged in as ${client.user.tag}`);
+    console.log(`[DEBUG] Bot ID: ${client.user.id}`);
+    console.log(`[DEBUG] Intents: ${client.options.intents.bitfield}`);
+    console.log(`[DEBUG] Partials: ${client.options.partials}`);
+    console.log(`[DEBUG] Message event handler is registered`);
     await registerCommands();
 });
 
-// Event: Message create (for DMs)
+// Event: Message create (for DMs AND debugging)
 client.on(Events.MessageCreate, async message => {
+    // DEBUG: Log EVERY message received (before any filtering)
+    console.log(`[DEBUG] MessageCreate fired! Author: ${message.author?.tag || 'unknown'}, Bot: ${message.author?.bot}, Channel Type: ${message.channel?.type}, Guild: ${message.guild?.name || 'none'}`);
+    
     // Ignore messages from bots (including self)
-    if (message.author.bot) return;
+    if (message.author.bot) {
+        console.log(`[DEBUG] Ignoring bot message`);
+        return;
+    }
     
     // Only handle DMs (not server messages)
     // Check both ways: no guild AND channel type is DM
     if (message.guild || message.channel.type !== ChannelType.DM) {
+        console.log(`[DEBUG] Not a DM, ignoring. Guild: ${!!message.guild}, ChannelType: ${message.channel.type}`);
         return; // Not a DM, ignore
     }
     
