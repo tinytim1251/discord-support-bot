@@ -84,7 +84,7 @@ async function notifyAgents(client, user, ticketId) {
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId(`claim_${user.id}`)
-                    .setLabel('Claim Conversation')
+                    .setLabel('Claim Ticket')
                     .setStyle(ButtonStyle.Success)
                     .setEmoji('👤')
             );
