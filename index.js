@@ -1,8 +1,7 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, Events, REST, Routes, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, REST, Routes, ChannelType, Partials } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
 
 // Initialize Discord client
 const client = new Client({
@@ -11,7 +10,10 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent // Required to read DM content - enable in Discord Developer Portal
-        // Note: MessageContent requires privileged intent - enable in Discord Developer Portal
+    ],
+    partials: [
+        Partials.Channel,  // Required for DMs
+        Partials.Message   // Required to receive DM messages
     ]
 });
 
@@ -20,102 +22,6 @@ client.commands = new Collection();
 
 // Initialize tickets Map (in-memory storage)
 const tickets = new Map();
-
-// Database setup
-const dbPath = path.join(__dirname, 'data', 'tickets.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Error opening database:', err.message);
-    } else {
-        console.log('Connected to SQLite database.');
-        // Initialize tickets table if it doesn't exist
-        db.run(`CREATE TABLE IF NOT EXISTS tickets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            userId TEXT NOT NULL,
-            username TEXT,
-            status TEXT DEFAULT 'open',
-            priority TEXT DEFAULT 'medium',
-            claimedBy TEXT,
-            claimedAt TEXT,
-            firstClaimedAt TEXT,
-            closedBy TEXT,
-            closedAt TEXT,
-            closeReason TEXT,
-            threadId TEXT,
-            category TEXT,
-            createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-            updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
-        )`, (err) => {
-            if (err) {
-                console.error('Error creating tickets table:', err.message);
-            } else {
-                console.log('Tickets table ready.');
-                // Load tickets from database
-                loadTicketsFromDB();
-            }
-        });
-    }
-});
-
-// Load tickets from database into memory
-function loadTicketsFromDB() {
-    db.all('SELECT * FROM tickets', [], (err, rows) => {
-        if (err) {
-            console.error('Error loading tickets:', err.message);
-            return;
-        }
-        tickets.clear();
-        rows.forEach(row => {
-            const ticket = {
-                id: row.id,
-                userId: row.userId,
-                username: row.username,
-                status: row.status,
-                priority: row.priority,
-                claimedBy: row.claimedBy,
-                claimedAt: row.claimedAt ? new Date(row.claimedAt) : null,
-                firstClaimedAt: row.firstClaimedAt ? new Date(row.firstClaimedAt) : null,
-                closedBy: row.closedBy,
-                closedAt: row.closedAt ? new Date(row.closedAt) : null,
-                closeReason: row.closeReason,
-                threadId: row.threadId,
-                category: row.category,
-                createdAt: new Date(row.createdAt),
-                updatedAt: new Date(row.updatedAt),
-                messages: [] // Messages are stored separately if needed
-            };
-            tickets.set(row.id, ticket);
-        });
-        console.log(`Loaded ${tickets.size} tickets from database.`);
-    });
-}
-
-// Save ticket to database
-function saveTicketToDB(ticket) {
-    const stmt = db.prepare(`INSERT OR REPLACE INTO tickets (
-        id, userId, username, status, priority, claimedBy, claimedAt, firstClaimedAt,
-        closedBy, closedAt, closeReason, threadId, category, createdAt, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    
-    stmt.run(
-        ticket.id,
-        ticket.userId,
-        ticket.username,
-        ticket.status,
-        ticket.priority || 'medium',
-        ticket.claimedBy || null,
-        ticket.claimedAt ? ticket.claimedAt.toISOString() : null,
-        ticket.firstClaimedAt ? ticket.firstClaimedAt.toISOString() : null,
-        ticket.closedBy || null,
-        ticket.closedAt ? ticket.closedAt.toISOString() : null,
-        ticket.closeReason || null,
-        ticket.threadId || null,
-        ticket.category || null,
-        ticket.createdAt ? ticket.createdAt.toISOString() : new Date().toISOString(),
-        new Date().toISOString()
-    );
-    stmt.finalize();
-}
 
 // Load commands
 const commandsPath = path.join(__dirname, 'commands');
@@ -177,9 +83,6 @@ client.on(Events.MessageCreate, async message => {
     // Ignore messages from bots (including self)
     if (message.author.bot) return;
     
-    // Debug: Log all messages to see what we're receiving
-    console.log(`[MESSAGE] Type: ${message.channel.type}, Guild: ${message.guild ? message.guild.name : 'DM'}, Author: ${message.author.tag}`);
-    
     // Only handle DMs (not server messages)
     // Check both ways: no guild AND channel type is DM
     if (message.guild || message.channel.type !== ChannelType.DM) {
@@ -190,11 +93,10 @@ client.on(Events.MessageCreate, async message => {
     
     try {
         // Simple DM response - you can customize this
-        const response = await message.reply('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me, or contact support staff for assistance.');
+        await message.reply('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me, or contact support staff for assistance.');
         console.log(`[DM] Successfully replied to ${message.author.tag}`);
     } catch (error) {
         console.error('[DM] Error responding to DM:', error.message);
-        console.error('[DM] Error stack:', error.stack);
         // Try sending a regular message instead of reply
         try {
             await message.channel.send('Hello! I\'m a support bot. Please use slash commands (/) in a server to interact with me.');
@@ -219,14 +121,6 @@ client.on(Events.InteractionCreate, async interaction => {
     try {
         // Execute command with tickets Map
         await command.execute(interaction, tickets);
-        
-        // Auto-save ticket changes to database
-        // This is a simple approach - in production, you might want more sophisticated change tracking
-        const ticketId = interaction.options?.getInteger('ticket_id') || 
-                        interaction.options?.getInteger('id');
-        if (ticketId && tickets.has(ticketId)) {
-            saveTicketToDB(tickets.get(ticketId));
-        }
     } catch (error) {
         console.error(`Error executing ${interaction.commandName}:`, error);
         
@@ -243,18 +137,7 @@ client.on(Events.InteractionCreate, async interaction => {
 // Handle process termination
 process.on('SIGINT', () => {
     console.log('\nShutting down gracefully...');
-    // Save all tickets to database before closing
-    tickets.forEach(ticket => {
-        saveTicketToDB(ticket);
-    });
-    db.close((err) => {
-        if (err) {
-            console.error('Error closing database:', err.message);
-        } else {
-            console.log('Database connection closed.');
-        }
-        process.exit(0);
-    });
+    process.exit(0);
 });
 
 // Login to Discord
@@ -264,4 +147,3 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 client.login(process.env.DISCORD_TOKEN);
-
